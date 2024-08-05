@@ -30,3 +30,4 @@ class Network<T:Decodable> {
     }
     
 }
+

@@ -11,6 +11,16 @@
 // RxSwift - 반응형 프로그래밍 (비동기처리)
 // RxAlamofire - 서버데이터 요청 쉽고 편리하게 응답값을 처리
 
+// 추가
+// 에러 처리
+// 리뷰 데이터 fetch
+// 리스트 뷰 (리뷰) CollectionView -> table view
+// 확장 축소
+
+// 페이지 네이션
+
+// 검색기능
+
 import UIKit
 import SnapKit
 import RxSwift
@@ -64,7 +74,7 @@ class ViewController: UIViewController {
     private func setUI() {
         self.view.addSubview(buttonView)
         self.view.addSubview(collectionView)
-                
+        
         buttonView.snp.makeConstraints { make in
             make.top.leading.trailing.equalTo(self.view.safeAreaLayoutGuide)
             make.height.equalTo(80)
@@ -91,7 +101,7 @@ class ViewController: UIViewController {
             self?.dataSource?.apply(snapshot)
         }.disposed(by: disposeBag)
         
-        output.movieList.bind { movieResult in
+        output.movieList.bind { [weak self] movieResult in
             print("Movie Result: \(movieResult)")
             
             var snapshot = NSDiffableDataSourceSnapshot<Section,Item>()
@@ -100,13 +110,26 @@ class ViewController: UIViewController {
                 return Item.bigImage(movie)
             }
             let bannerSection = Section.banner
+            snapshot.appendSections([bannerSection])
+            snapshot.appendItems(bigImageList, toSection: bannerSection)
             
-            snapshot.appendSections(<#T##identifiers: [Section]##[Section]#>)
-            snapshot.appendItems(<#T##identifiers: [Item]##[Item]#>)
+            let horizontalSection = Section.horizontal("Popular Movies")
+            let normalList = movieResult.popular.results.map { movie in
+                return Item.normal(Content(movie: movie))
+            }
+            snapshot.appendSections([horizontalSection])
+            snapshot.appendItems(normalList, toSection: horizontalSection)
             
-          
             
-            // 🚨
+            let verticalSection = Section.vertical("Upcoming Movies")
+            let itemList = movieResult.upcoming.results.map { movie in
+                return Item.list(movie)
+            }
+            snapshot.appendSections([verticalSection])
+            snapshot.appendItems(itemList, toSection: verticalSection)
+            
+            self?.dataSource?.apply(snapshot)
+            
         }.disposed(by: disposeBag)
     }
     
@@ -131,6 +154,8 @@ class ViewController: UIViewController {
                 return self?.createBannerSection()
             case .horizontal:
                 return self?.createHorizontalSection()
+            case .vertical:
+                return self?.createVerticalSection()
             default:
                 return self?.createDoubleSection()
             }
@@ -138,15 +163,35 @@ class ViewController: UIViewController {
         }, configuration: config)
     }
     
+    private func createVerticalSection() -> NSCollectionLayoutSection {
+        let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .fractionalHeight(0.3))
+        let item = NSCollectionLayoutItem(layoutSize: itemSize)
+        item.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 10, trailing: 0)
+        
+        let groupSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .absolute(320))
+        let group = NSCollectionLayoutGroup.vertical(layoutSize: groupSize, subitem: item, count: 3)
+        
+        let section = NSCollectionLayoutSection(group: group)
+        section.orthogonalScrollingBehavior = .continuous
+        let headerSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .absolute(44))
+        let header = NSCollectionLayoutBoundarySupplementaryItem(layoutSize: headerSize, elementKind: UICollectionView.elementKindSectionHeader, alignment: .topLeading)
+        section.boundarySupplementaryItems = [header]
+        return section
+    }
+    
     private func createHorizontalSection() -> NSCollectionLayoutSection {
         let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .fractionalHeight(1.0))
         let item = NSCollectionLayoutItem(layoutSize: itemSize)
+        item.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10)
         
         let groupSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(0.4), heightDimension: .absolute(320))
         let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, subitems: [item])
         
         let section = NSCollectionLayoutSection(group: group)
         section.orthogonalScrollingBehavior = .continuous
+        let headerSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .absolute(44))
+        let header = NSCollectionLayoutBoundarySupplementaryItem(layoutSize: headerSize, elementKind: UICollectionView.elementKindSectionHeader, alignment: .topLeading)
+        section.boundarySupplementaryItems = [header]
         return section
     }
     
@@ -185,14 +230,27 @@ class ViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(withReuseIdentifier: BigImageCollectionViewCell.id, for: indexPath) as? BigImageCollectionViewCell
                 cell?.configure(title: movieData.title, overview: movieData.overview, review: movieData.vote, url: movieData.posterURL)
                 return cell
-//            case .list(let moiveData):
-//                let cell = collectionView.dequeueReusableCell(withReuseIdentifier: BigImageCollectionViewCell.id, for: indexPath) as? BigImageCollectionViewCell
-//                cell?.configure(title: movieData.title, overview: movieData.overview, review: movieData.vote, url: movieData.posterURL)
-//                return cell
-            default:
-                return UICollectionViewCell()
+            case .list(let movieData):
+                let cell = collectionView.dequeueReusableCell(withReuseIdentifier: ListCollectionViewCell.id, for: indexPath) as? ListCollectionViewCell
+                cell?.configure(title: movieData.title, releaseDate: movieData.releaseDate, url: movieData.posterURL)
+                return cell
             }
         })
+        
+        dataSource?.supplementaryViewProvider = { [weak self] collectionView, kind, indexPath -> UICollectionReusableView in
+            let header = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: HeaderView.id, for: indexPath)
+            let section = self?.dataSource?.sectionIdentifier(for: indexPath.section)
+            
+            switch section {
+            case .horizontal(let title), .vertical(let title):
+                (header as? HeaderView)?.configure(title: title)
+            default:
+                print("Default")
+            }
+            
+            return header
+        }
+        
     }
     
 }
