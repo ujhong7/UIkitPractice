@@ -116,7 +116,15 @@ class ViewController: UIViewController {
     }
     
     private func bindViewModel() {
-        let input = ViewModel.Input(tvTrigger: tvTrigger.asObservable(), movieTrigger: movieTrigger.asObservable())
+        let keyword = textfield.rx.text.orEmpty.distinctUntilChanged()
+            .debounce(.milliseconds(200), scheduler: MainScheduler.instance).map({ [weak self] keyword in
+                self?.tvTrigger.onNext(1)
+                return keyword
+            })
+        
+        let input = ViewModel.Input(keyword: keyword,
+                                    tvTrigger: tvTrigger.asObservable(),
+                                    movieTrigger: movieTrigger.asObservable())
         
         let output = viewModel.transform(input: input)
         

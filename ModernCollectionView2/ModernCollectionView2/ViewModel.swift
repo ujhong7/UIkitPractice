@@ -36,23 +36,22 @@ class ViewModel {
     
     func transform(input: Input) -> Output {
         
-        Observable.combineLatest(input.tvTrigger, input.keyword)
-            .flatMap { [unowned self ]page, keyword in
-                <#code#>
-            }
-        
         // trigger -> 네트워크 -> Observable<T> -> VC 전달 -> VC에서 구독
         
-        // tvTrigger -> Observable<Void> -> Observable<[TV]>
-//        let tvList = input.tvTrigger.flatMapLatest { [unowned self] page -> Observable<[TV]> in
-//            if page == 1 { currentTVList = [] }
-//            self.currentContentType = .tv
-//            return self.tvNetwork.getTopRatedList(page: page).map { $0.results }.map { tvlist in
-//                // 현재 리스트 + 새로운 리스트
-//                self.currentTVList += tvlist
-//                return self.currentTVList
-//            }
-//        }
+        let tvList = Observable.combineLatest(input.tvTrigger, input.keyword)
+            .flatMapLatest { [unowned self]page, keyword in
+                if page == 1 { currentTVList = [] }
+                self.currentContentType = .tv
+                if keyword.isEmpty {
+                    return self.tvNetwork.getTopRatedList(page: page)
+                } else {
+                    return self.tvNetwork.getQueriedList(page: page, query: keyword)
+                }
+            }.map { $0.results }
+            .map { tvList in
+                self.currentTVList += tvList
+                return self.currentTVList
+            }
         
         let movieResult = input.movieTrigger.flatMap { [unowned self] _ -> Observable<Result<MovieResult,Error>> in
             // combineLatest
