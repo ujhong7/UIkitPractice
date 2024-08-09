@@ -13,6 +13,7 @@ struct MovieListModel: Decodable {
 }
 
 struct Movie: Decodable, Hashable {
+    let id: Int
     let title: String
     let overview: String
     let posterURL: String
@@ -20,6 +21,7 @@ struct Movie: Decodable, Hashable {
     let releaseDate: String
     
     private enum CodingKeys: String, CodingKey {
+        case id
         case title
         case overview
         case posterPath = "poster_path"
@@ -30,6 +32,7 @@ struct Movie: Decodable, Hashable {
     
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
         title = try container.decode(String.self, forKey: .title)
         overview = try container.decode(String.self, forKey: .overview)
         

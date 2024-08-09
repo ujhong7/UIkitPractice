@@ -26,7 +26,7 @@ import SnapKit
 import RxSwift
 
 // 섹션 - 레이아웃 관련
-enum Section: Hashable {
+fileprivate enum Section: Hashable {
     case double
     case banner
     case horizontal(String) // 헤더부분을 전달하기 위해 String 전달
@@ -34,7 +34,7 @@ enum Section: Hashable {
 }
 
 // 셀 - 아이템을 구현할 때 기준을 잡기위해
-enum Item: Hashable {
+fileprivate enum Item: Hashable {
     case normal(Content) // Movie
     case bigImage(Movie)
     case list(Movie)
@@ -56,10 +56,29 @@ class ViewController: UIViewController {
         return collectionView
     }()
     
+    // 검색창 (왜 스택뷰? 히든처리를 위해 스택뷰 활용)
+    private let stackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.spacing = 8
+        return stackView
+    }()
+    
+    private let textfield: UITextField = {
+        let textfield = UITextField()
+        textfield.layer.borderWidth = 1
+        textfield.layer.borderColor = UIColor.lightGray.cgColor
+        textfield.layer.cornerRadius = 6
+        textfield.tintColor = .black
+        textfield.leftView = UIImageView(image: UIImage(systemName: "magnifyingglass"))
+        textfield.leftViewMode = .always
+        return textfield
+    }()
+    
     let viewModel = ViewModel()
     
     // Subject - 이벤트를 발생시키면서 Observable 형태도 되는거
-    let tvTrigger = PublishSubject<Void>()
+    let tvTrigger = BehaviorSubject<Int>(value: 1)
     let movieTrigger = PublishSubject<Void>()
     
     override func viewDidLoad() {
@@ -68,21 +87,31 @@ class ViewController: UIViewController {
         setDataSource()
         bindViewModel()
         bindView()
-        tvTrigger.onNext(())
+        tvTrigger.onNext(1)
     }
     
+    // 🚨 이 부분 하고 있었음
     private func setUI() {
-        self.view.addSubview(buttonView)
+        self.view.addSubview(stackView)
+        stackView.addArrangedSubview(textfield)
+        stackView.addArrangedSubview(buttonView)
         self.view.addSubview(collectionView)
         
+        stackView.snp.makeConstraints { make in
+            make.top.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(12)
+        }
+        
+        textfield.snp.makeConstraints { make in
+            make.height.equalTo(44)
+        }
+        
         buttonView.snp.makeConstraints { make in
-            make.top.leading.trailing.equalTo(self.view.safeAreaLayoutGuide)
             make.height.equalTo(80)
         }
         
         collectionView.snp.makeConstraints { make in
             make.leading.trailing.bottom.equalToSuperview()
-            make.top.equalTo(buttonView.snp.bottom)
+            make.top.equalTo(stackView.snp.bottom)
         }
     }
     
@@ -101,46 +130,93 @@ class ViewController: UIViewController {
             self?.dataSource?.apply(snapshot)
         }.disposed(by: disposeBag)
         
-        output.movieList.bind { [weak self] movieResult in
-            print("Movie Result: \(movieResult)")
+        output.movieList.bind { [weak self] result in
+            print("Movie Result: \(result)")
             
-            var snapshot = NSDiffableDataSourceSnapshot<Section,Item>()
-            
-            let bigImageList = movieResult.nowPlaying.results.map { movie in
-                return Item.bigImage(movie)
+            switch result {
+            case .success(let movieResult):
+                var snapshot = NSDiffableDataSourceSnapshot<Section,Item>()
+                
+                let bigImageList = movieResult.nowPlaying.results.map { movie in
+                    return Item.bigImage(movie)
+                }
+                let bannerSection = Section.banner
+                snapshot.appendSections([bannerSection])
+                snapshot.appendItems(bigImageList, toSection: bannerSection)
+                
+                let horizontalSection = Section.horizontal("Popular Movies")
+                let normalList = movieResult.popular.results.map { movie in
+                    return Item.normal(Content(movie: movie))
+                }
+                snapshot.appendSections([horizontalSection])
+                snapshot.appendItems(normalList, toSection: horizontalSection)
+                
+                
+                let verticalSection = Section.vertical("Upcoming Movies")
+                let itemList = movieResult.upcoming.results.map { movie in
+                    return Item.list(movie)
+                }
+                snapshot.appendSections([verticalSection])
+                snapshot.appendItems(itemList, toSection: verticalSection)
+                
+                self?.dataSource?.apply(snapshot)
+            case .failure(let error):
+                // Toast dialog
+                print(error)
             }
-            let bannerSection = Section.banner
-            snapshot.appendSections([bannerSection])
-            snapshot.appendItems(bigImageList, toSection: bannerSection)
-            
-            let horizontalSection = Section.horizontal("Popular Movies")
-            let normalList = movieResult.popular.results.map { movie in
-                return Item.normal(Content(movie: movie))
-            }
-            snapshot.appendSections([horizontalSection])
-            snapshot.appendItems(normalList, toSection: horizontalSection)
-            
-            
-            let verticalSection = Section.vertical("Upcoming Movies")
-            let itemList = movieResult.upcoming.results.map { movie in
-                return Item.list(movie)
-            }
-            snapshot.appendSections([verticalSection])
-            snapshot.appendItems(itemList, toSection: verticalSection)
-            
-            self?.dataSource?.apply(snapshot)
             
         }.disposed(by: disposeBag)
     }
     
     private func bindView() {
         buttonView.tvButton.rx.tap.bind { [weak self] in
-            self?.tvTrigger.onNext(Void())
+            self?.textfield.isHidden = false
+            self?.tvTrigger.onNext(1)
         }.disposed(by: disposeBag)
         
         buttonView.movieButton.rx.tap.bind { [weak self] in
+            self?.textfield.isHidden = true
             self?.movieTrigger.onNext(Void())
         }.disposed(by: disposeBag)
+        
+        // 화면전환 🚨🚨🚨
+        collectionView.rx.itemSelected.bind { [weak self] indexPath in
+            print(indexPath)
+            let item =  self?.dataSource?.itemIdentifier(for: indexPath)
+            switch item {
+            case .normal(let content):
+                print(content)
+                let navigationController = UINavigationController()
+                let viewController = ReviewViewController(id: content.id, contentType: content.type)
+                navigationController.viewControllers = [viewController]
+                self? .present(navigationController, animated: true)
+            case .list(let moive):
+                print(moive)
+                
+            default:
+                print("default")
+            }
+            
+        }.disposed(by: disposeBag)
+        
+        // 페이지 네이션
+        collectionView.rx.prefetchItems
+            .filter({ [weak self] _ in
+                // 현재 보고있는 컨텐츠가 TV인지 체크
+                return self?.viewModel.currentContentType == .tv
+            })
+            .bind { [weak self] indexPath in
+                print(indexPath) // 현재페이지 + 아이템 갯수
+                let snapshot = self?.dataSource?.snapshot()
+                guard let lastIndexPath = indexPath.last,
+                      let section = self?.dataSource?.sectionIdentifier(for: lastIndexPath.section),
+                      let itemCount = snapshot?.numberOfItems(inSection: section),
+                      let currentPage = try? self?.tvTrigger.value() else { return }
+                if lastIndexPath.row > itemCount - 4 {
+                    self?.tvTrigger.onNext(currentPage + 1)
+                }
+            }.disposed(by: disposeBag)
+        
     }
     
     private func createLayout() -> UICollectionViewCompositionalLayout {
